@@ -2,17 +2,21 @@
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import datetime
+from typing import Optional
 
 import httpx
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import models  # noqa: F401 - register ORM models with Base.metadata
 from database import Base, engine, get_db
+from models import ClaimStatus, ClaimType, SourceType
+from services.extractor import generate_handover, get_handover_claims
 from services.github import ingest_github_repo
 from services.seeder import seed_synthetic_chat
 
@@ -37,6 +41,59 @@ class IngestionResponse(BaseModel):
     project_id: int
     ingested_count: int
     source_ids: list[int]
+
+
+class HandoverGenerateRequest(BaseModel):
+    """Payload for generating RBAC-scoped handover claims."""
+
+    project_id: int = Field(..., gt=0)
+    role: str = Field(..., min_length=1, examples=["project_head", "junior_dev"])
+
+
+class EvidenceSourceOut(BaseModel):
+    """Supporting source snippet linked to a knowledge claim."""
+
+    id: int
+    type: SourceType
+    content: str
+    author: str
+    timestamp: datetime
+    permissions: list[str]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClaimEvidenceOut(BaseModel):
+    """Evidence link pairing a knowledge claim with its source record."""
+
+    id: int
+    source_id: int
+    source: EvidenceSourceOut
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class KnowledgeClaimOut(BaseModel):
+    """Extracted knowledge claim with nested supporting evidence."""
+
+    id: int
+    project_id: int
+    claim_type: ClaimType
+    statement: str
+    status: ClaimStatus
+    required_role: Optional[str] = None
+    evidences: list[ClaimEvidenceOut] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class HandoverResponse(BaseModel):
+    """Handover state payload containing extracted claims and evidence."""
+
+    project_id: int
+    role: str
+    count: int
+    claims: list[KnowledgeClaimOut]
 
 
 @asynccontextmanager
@@ -162,4 +219,70 @@ async def seed_chat_endpoint(
         project_id=resolved_project_id,
         ingested_count=len(sources),
         source_ids=[source.id for source in sources if source.id is not None],
+    )
+
+
+@app.post(
+    "/api/handover/generate",
+    response_model=HandoverResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Handover"],
+)
+async def generate_handover_endpoint(
+    payload: HandoverGenerateRequest,
+    db: AsyncSession = Depends(get_db),
+) -> HandoverResponse:
+    """Generate and persist RBAC-filtered handover claims using Gemini."""
+    try:
+        claims = await generate_handover(
+            project_id=payload.project_id,
+            role=payload.role,
+            db_session=db,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {payload.project_id} not found.",
+        ) from exc
+
+    return HandoverResponse(
+        project_id=payload.project_id,
+        role=payload.role,
+        count=len(claims),
+        claims=[KnowledgeClaimOut.model_validate(claim) for claim in claims],
+    )
+
+
+@app.get(
+    "/api/handover/{project_id}",
+    response_model=HandoverResponse,
+    tags=["Handover"],
+)
+async def get_handover_endpoint(
+    project_id: int,
+    role: str = Query(..., min_length=1, examples=["project_head", "junior_dev"]),
+    db: AsyncSession = Depends(get_db),
+) -> HandoverResponse:
+    """Return persisted handover claims and nested source evidence for a role."""
+    claims = await get_handover_claims(
+        project_id=project_id,
+        role=role,
+        db_session=db,
+    )
+    return HandoverResponse(
+        project_id=project_id,
+        role=role,
+        count=len(claims),
+        claims=[KnowledgeClaimOut.model_validate(claim) for claim in claims],
     )
