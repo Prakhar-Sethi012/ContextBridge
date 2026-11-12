@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import models  # noqa: F401 - register ORM models with Base.metadata
 from database import Base, engine, get_db
 from models import ClaimStatus, ClaimType, SourceType
+from services.analytics import calculate_bus_factor
 from services.extractor import generate_handover, get_handover_claims
 from services.github import ingest_github_repo
 from services.seeder import seed_synthetic_chat
@@ -94,6 +95,15 @@ class HandoverResponse(BaseModel):
     role: str
     count: int
     claims: list[KnowledgeClaimOut]
+
+
+class BusFactorDomainOut(BaseModel):
+    """Knowledge continuity risk summary for a single domain."""
+
+    domain: str
+    primary_holder: str
+    risk_level: str
+    unique_contributors: int
 
 
 @asynccontextmanager
@@ -286,3 +296,20 @@ async def get_handover_endpoint(
         count=len(claims),
         claims=[KnowledgeClaimOut.model_validate(claim) for claim in claims],
     )
+
+
+@app.get(
+    "/api/analytics/bus-factor/{project_id}",
+    response_model=list[BusFactorDomainOut],
+    tags=["Analytics"],
+)
+async def get_bus_factor_endpoint(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> list[BusFactorDomainOut]:
+    """Compute and return bus-factor risk metrics across project domains."""
+    results = await calculate_bus_factor(
+        project_id=project_id,
+        db_session=db,
+    )
+    return [BusFactorDomainOut(**item) for item in results]
