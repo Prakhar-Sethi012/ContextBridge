@@ -9,6 +9,11 @@ env/
 # Environment
 .env
 
+# Node
+node_modules/
+dist/
+dist-ssr/
+
 # IDE
 .vscode/
 .idea/

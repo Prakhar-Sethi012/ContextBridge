@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-radius: 0 !important;
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    @apply bg-beige text-charcoal font-sans antialiased;
+    min-height: 100vh;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+/* Linear, consistent fast transitions */
+.transition-fast {
+  transition-property: all;
+  transition-timing-function: linear;
+  transition-duration: 150ms;
+}
+
+/* Custom scrollbar matching flat aesthetic */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #EFECE2;
+}
+::-webkit-scrollbar-thumb {
+  background: #0B3D30;
+}
