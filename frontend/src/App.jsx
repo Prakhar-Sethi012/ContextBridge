@@ -29,7 +29,7 @@ export default function App() {
   const fetchHandoverData = useCallback(async (pId, role) => {
     try {
       const data = await getHandover(pId, role);
-      setClaims(data.claims || []);
+      setClaims(Array.isArray(data) ? data : (data.claims || []));
       setErrorMessage(null);
     } catch (err) {
       setErrorMessage(err.message);
@@ -124,7 +124,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-beige flex flex-col selection:bg-forest selection:text-vibrant">
+    <div className="min-h-screen flex flex-col bg-beige selection:bg-forest selection:text-vibrant">
       {/* Task 3: Flat Header */}
       <Header
         currentRole={currentRole}
@@ -147,7 +147,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <main className="flex-1 w-full px-6 sm:px-8 py-8 space-y-6">
         {/* Error Alert Banner */}
         {errorMessage && (
           <div className="bg-red-50 border-2 border-red-700 p-4 flex items-start justify-between gap-3 text-red-900 font-mono text-xs">
@@ -220,7 +220,7 @@ export default function App() {
 
       {/* Minimal Footer */}
       <footer className="w-full bg-beige border-t border-beige-border py-4 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between text-[11px] font-mono text-gray-500 gap-2">
+        <div className="w-full px-6 sm:px-8 flex flex-col sm:flex-row items-center justify-between text-[11px] font-mono text-gray-500 gap-2">
           <span>ContextBridge • Project State Reconstruction Engine</span>
           <span>FastAPI + PostgreSQL pgvector + Gemini RAG + React</span>
         </div>

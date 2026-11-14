@@ -8,7 +8,7 @@ export const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 45000, // accommodate Gemini LLM generation if needed
+  timeout: 120000, // 2 minutes to accommodate Gemini LLM generation if needed
 });
 
 /**

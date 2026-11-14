@@ -1,12 +1,11 @@
-"""Gemini-powered knowledge extraction and verification engine."""
+"""Groq-powered knowledge extraction and verification engine."""
 
-import asyncio
 import json
 import re
 from enum import Enum
 from typing import Any, TypeVar
 
-import google.generativeai as genai
+import httpx
 from sqlalchemy import ColumnElement, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -23,10 +22,6 @@ DEFAULT_EXTRACTION_QUERY = (
     "Project architecture decisions, unresolved issues, dependencies, "
     "AWS credentials, and risks."
 )
-
-EXTRACTION_MODEL = "gemini-1.5-flash"
-
-_CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
 
 
 def get_permissions_for_role(role: str) -> list[str]:
@@ -48,42 +43,6 @@ def _format_sources_block(sources: list[Source]) -> str:
             f"Content: {src.content}"
         )
     return "\n\n---\n\n".join(formatted_items)
-
-
-def _build_extraction_prompt(sources_block: str) -> str:
-    """Build the strict JSON extraction prompt for Gemini."""
-    return (
-        "You are ContextBridge, a project state reconstruction and verification engine.\n"
-        "Analyze the project sources below carefully, paying attention to timestamps, authors, "
-        "and whether later authoritative sources confirm or contradict earlier ones.\n\n"
-        "Extract structured knowledge claims and return ONLY a valid JSON array of objects "
-        "(no markdown, no prose). Each object must have exactly these keys:\n"
-        '- "claim_type": one of "decision", "risk", "dependency", "next_action"\n'
-        '- "statement": concise factual summary of the claim\n'
-        '- "status": one of "verified" (sources agree or a lead/final decision resolves prior disagreement), '
-        '"conflicted" (sources actively disagree without resolution), or "stale" (superseded/outdated)\n'
-        '- "source_ids": array of integer Source IDs from the provided sources that support or relate to this claim\n\n'
-        "Sources:\n"
-        f"{sources_block}"
-    )
-
-
-def _parse_claims_json(raw_text: str) -> list[dict[str, Any]]:
-    """Parse Gemini JSON output, tolerating optional markdown code fences."""
-    cleaned = _CODE_FENCE_RE.sub("", raw_text.strip()).strip()
-    if not cleaned:
-        return []
-
-    try:
-        parsed = json.loads(cleaned)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Gemini returned invalid JSON: {exc}") from exc
-
-    if isinstance(parsed, dict) and isinstance(parsed.get("claims"), list):
-        parsed = parsed["claims"]
-    if not isinstance(parsed, list):
-        raise RuntimeError("Gemini response must be a JSON array of claim objects.")
-    return [item for item in parsed if isinstance(item, dict)]
 
 
 _EnumT = TypeVar("_EnumT", bound=Enum)
@@ -148,44 +107,99 @@ async def get_handover_claims(
         KnowledgeClaim.project_id == project_id,
         KnowledgeClaim.required_role == role,
     )
-
-
+import os
 async def generate_handover(
     project_id: int,
     role: str,
     db_session: AsyncSession,
+    custom_text: str = None  # NEW: Allows live frontend text injection!
 ) -> list[KnowledgeClaim]:
-    """Retrieve RBAC-filtered context, extract claims via Gemini, and persist evidence."""
-    user_permissions = get_permissions_for_role(role)
-    sources = await retrieve_context(
-        query=DEFAULT_EXTRACTION_QUERY,
-        project_id=project_id,
-        user_permissions=user_permissions,
-        db_session=db_session,
-    )
-    if not sources:
+    """Retrieve context (or use custom text), extract claims via Groq API, and persist."""
+    import os
+    
+    # 1. BULLETPROOF API KEY LOADING (Reads .env directly if os.environ misses it)
+    groq_key = os.environ.get("GROQ_API_KEY")
+    if not groq_key:
+        try:
+            with open(".env", "r") as f:
+                for line in f:
+                    if line.startswith("GROQ_API_KEY="):
+                        groq_key = line.split("=", 1)[1].strip().strip('"').strip("'")
+        except Exception:
+            pass
+            
+    if not groq_key:
+        print("\n[ERROR] GROQ_API_KEY not found! Please add it to your .env file.\n")
         return []
 
-    sources_block = _format_sources_block(sources)
-    prompt = _build_extraction_prompt(sources_block)
+    # 2. INTERACTIVE SANDBOX LOGIC
+    if custom_text:
+        context_block = custom_text
+        sources = []
+        valid_source_ids = set()
+    else:
+        user_permissions = get_permissions_for_role(role)
+        sources = await retrieve_context(
+            query=DEFAULT_EXTRACTION_QUERY,
+            project_id=project_id,
+            user_permissions=user_permissions,
+            db_session=db_session,
+        )
+        if not sources:
+            return []
+        context_block = _format_sources_block(sources)
+        valid_source_ids = {s.id for s in sources if s.id is not None}
 
-    model = genai.GenerativeModel(EXTRACTION_MODEL)
-    generation_config = genai.GenerationConfig(
-        response_mime_type="application/json",
-        temperature=0.1,
+    system_prompt = (
+        "You are ContextBridge, a project state reconstruction and verification engine.\n"
+        "Analyze the project sources carefully.\n\n"
+        "Extract structured knowledge claims. You MUST respond in JSON format, providing a single "
+        "JSON object with a key 'claims' containing an array of objects. Each object must have these keys:\n"
+        '- "claim_type": "decision", "risk", "dependency", or "next_action"\n'
+        '- "statement": concise factual summary of the claim\n'
+        '- "status": "verified", "conflicted", or "stale"\n'
+        '- "source_ids": array of integer Source IDs from the provided sources that support this claim'
     )
-    response = await asyncio.to_thread(
-        model.generate_content,
-        prompt,
-        generation_config=generation_config,
-    )
+    
+    user_prompt = f"Sources:\n{context_block}"
 
-    raw_claims = _parse_claims_json(response.text)
-    allowed_source_ids = {src.id for src in sources if src.id is not None}
+    api_url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {groq_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "openai/gpt-oss-20b",  # <-- Update to the active developer tier model
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        "temperature": 0.1
+    }
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        try:
+            resp = await client.post(api_url, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+            raw_text = data["choices"][0]["message"]["content"].strip()
+            
+            # 3. BULLETPROOF JSON STRIPPING
+            if raw_text.startswith("```json"):
+                raw_text = raw_text.split("```json")[1].split("```")[0].strip()
+            elif raw_text.startswith("```"):
+                raw_text = raw_text.split("```")[1].strip()
+                
+            claims_data = json.loads(raw_text).get("claims", [])
+            
+        except Exception as e:
+            print(f"\n[GROQ API OR PARSE ERROR] {e}")
+            claims_data = []
+    
     created_claim_ids: list[int] = []
     created_claims: list[KnowledgeClaim] = []
-
-    for item in raw_claims:
+    
+    for item in claims_data:
         claim_type = _coerce_enum(item.get("claim_type"), ClaimType)
         statement = str(item.get("statement") or "").strip()
         if claim_type is None or not statement:
@@ -195,33 +209,31 @@ async def generate_handover(
             _coerce_enum(item.get("status"), ClaimStatus, ClaimStatus.UNVERIFIED)
             or ClaimStatus.UNVERIFIED
         )
+        
         claim = KnowledgeClaim(
             project_id=project_id,
             claim_type=claim_type,
             statement=statement,
             status=claim_status,
-            required_role=role,
+            required_role=role
         )
         db_session.add(claim)
         await db_session.flush()
-
-        for sid in _extract_valid_source_ids(item.get("source_ids"), allowed_source_ids):
-            db_session.add(
-                ClaimEvidence(
-                    claim_id=claim.id,
-                    source_id=sid,
-                )
-            )
-
+        
+        s_ids = _extract_valid_source_ids(item.get("source_ids", []), valid_source_ids)
+        for sid in s_ids:
+            evidence = ClaimEvidence(claim_id=claim.id, source_id=sid)
+            db_session.add(evidence)
+            
         if claim.id is not None:
             created_claim_ids.append(claim.id)
         created_claims.append(claim)
-
+        
     await db_session.commit()
-
+    
     if not created_claim_ids:
         return created_claims
-
+        
     return await _fetch_claims_with_evidence(
         db_session,
         KnowledgeClaim.id.in_(created_claim_ids),

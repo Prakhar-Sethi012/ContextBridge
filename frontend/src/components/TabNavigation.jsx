@@ -12,7 +12,7 @@ export default function TabNavigation({
 
   return (
     <div className="w-full bg-beige border-b border-beige-border">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row sm:items-center justify-between">
+      <div className="w-full px-6 sm:px-8 flex flex-col sm:flex-row sm:items-center justify-between">
         {/* Flat Bottom-Border Tabs */}
         <nav className="flex space-x-8" aria-label="Tabs">
           <button

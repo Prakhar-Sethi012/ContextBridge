@@ -112,6 +112,11 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
         await conn.run_sync(Base.metadata.create_all)
+        res = await conn.execute(text("SELECT id FROM projects WHERE id = 1;"))
+        if not res.scalar():
+            await conn.execute(
+                text("INSERT INTO projects (id, name) VALUES (1, 'ContextBridge Demo') ON CONFLICT (id) DO NOTHING;")
+            )
     try:
         yield
     finally:
@@ -276,26 +281,21 @@ async def generate_handover_endpoint(
 
 @app.get(
     "/api/handover/{project_id}",
-    response_model=HandoverResponse,
+    response_model=list[KnowledgeClaimOut],
     tags=["Handover"],
 )
 async def get_handover_endpoint(
     project_id: int,
     role: str = Query(..., min_length=1, examples=["project_head", "junior_dev"]),
     db: AsyncSession = Depends(get_db),
-) -> HandoverResponse:
+) -> list[KnowledgeClaimOut]:
     """Return persisted handover claims and nested source evidence for a role."""
     claims = await get_handover_claims(
         project_id=project_id,
         role=role,
         db_session=db,
     )
-    return HandoverResponse(
-        project_id=project_id,
-        role=role,
-        count=len(claims),
-        claims=[KnowledgeClaimOut.model_validate(claim) for claim in claims],
-    )
+    return [KnowledgeClaimOut.model_validate(claim) for claim in claims]
 
 
 @app.get(

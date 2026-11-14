@@ -6,7 +6,7 @@ import google.generativeai as genai
 
 from config import settings
 
-EMBEDDING_MODEL = "models/text-embedding-004"
+EMBEDDING_MODEL = "models/gemini-embedding-001"
 
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
@@ -18,9 +18,11 @@ async def get_embedding(text: str) -> list[float]:
         raise ValueError("Cannot generate embedding for empty text.")
 
     response = await asyncio.to_thread(
-        genai.embed_content,
-        model=EMBEDDING_MODEL,
-        content=cleaned,
-    )
+            genai.embed_content,
+            model=EMBEDDING_MODEL,
+            content=cleaned,
+            task_type="retrieval_document",
+            output_dimensionality=768  # ADD THIS LINE
+        )
     return [float(value) for value in response["embedding"]]
 
