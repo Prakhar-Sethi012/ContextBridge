@@ -60,20 +60,48 @@ export const seedChat = async (projectId = 1) => {
 };
 
 /**
- * Trigger Gemini-powered knowledge claim extraction and persistence.
+ * Trigger Gemini/Groq knowledge claim extraction and persistence.
+ * Supports standard RAG extraction or custom text extraction for the Interactive Sandbox.
  * @param {number} projectId 
  * @param {string} role 
+ * @param {string|null} customText 
  */
-export const generateHandover = async (projectId = 1, role = 'project_head') => {
+export const generateHandover = async (projectId = 1, role = 'project_head', customText = null) => {
   try {
-    const response = await apiClient.post('/handover/generate', {
-      project_id: Number(projectId),
+    const payload = {
+      project_id: Number(projectId) || 1,
       role: normalizeRole(role),
-    });
+    };
+    if (customText !== null && customText !== undefined) {
+      payload.custom_text = customText;
+    }
+    const response = await apiClient.post('/handover/generate', payload);
     return response.data;
   } catch (error) {
     const message = extractErrorMessage(error, 'Failed to generate handover blueprint.');
     console.error('[API] generateHandover error:', message);
+    throw new Error(message);
+  }
+};
+
+/**
+ * Interactive Sandbox extraction: posts custom chat script directly to /api/handover/generate.
+ * Sends { role: "project_head", custom_text: <text> }.
+ * @param {string} customText
+ * @param {string} role
+ * @param {number} projectId
+ */
+export const runSandboxExtraction = async (customText, role = 'project_head', projectId = 1) => {
+  try {
+    const response = await apiClient.post('/handover/generate', {
+      role: normalizeRole(role),
+      project_id: Number(projectId) || 1,
+      custom_text: customText,
+    });
+    return response.data;
+  } catch (error) {
+    const message = extractErrorMessage(error, 'Failed to extract claims from sandbox script.');
+    console.error('[API] runSandboxExtraction error:', message);
     throw new Error(message);
   }
 };
@@ -116,6 +144,7 @@ export const getBusFactor = async (projectId = 1) => {
 export default {
   seedChat,
   generateHandover,
+  runSandboxExtraction,
   getHandover,
   getBusFactor,
 };

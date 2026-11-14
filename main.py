@@ -47,8 +47,9 @@ class IngestionResponse(BaseModel):
 class HandoverGenerateRequest(BaseModel):
     """Payload for generating RBAC-scoped handover claims."""
 
-    project_id: int = Field(..., gt=0)
     role: str = Field(..., min_length=1, examples=["project_head", "junior_dev"])
+    project_id: Optional[int] = Field(default=1, gt=0)
+    custom_text: Optional[str] = Field(default=None, description="Custom chat/markdown text for live extraction")
 
 
 class EvidenceSourceOut(BaseModel):
@@ -247,12 +248,14 @@ async def generate_handover_endpoint(
     payload: HandoverGenerateRequest,
     db: AsyncSession = Depends(get_db),
 ) -> HandoverResponse:
-    """Generate and persist RBAC-filtered handover claims using Gemini."""
+    """Generate and persist RBAC-filtered handover claims using Gemini or custom text."""
+    resolved_project_id = payload.project_id if payload.project_id is not None else 1
     try:
         claims = await generate_handover(
-            project_id=payload.project_id,
+            project_id=resolved_project_id,
             role=payload.role,
             db_session=db,
+            custom_text=payload.custom_text,
         )
     except ValueError as exc:
         raise HTTPException(
@@ -268,11 +271,11 @@ async def generate_handover_endpoint(
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {payload.project_id} not found.",
+            detail=f"Project {resolved_project_id} not found.",
         ) from exc
 
     return HandoverResponse(
-        project_id=payload.project_id,
+        project_id=resolved_project_id,
         role=payload.role,
         count=len(claims),
         claims=[KnowledgeClaimOut.model_validate(claim) for claim in claims],

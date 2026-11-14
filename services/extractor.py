@@ -200,9 +200,15 @@ async def generate_handover(
     created_claims: list[KnowledgeClaim] = []
     
     for item in claims_data:
-        claim_type = _coerce_enum(item.get("claim_type"), ClaimType)
-        statement = str(item.get("statement") or "").strip()
-        if claim_type is None or not statement:
+        if isinstance(item, str):
+            item = {"claim_type": "decision", "statement": item, "status": "verified", "source_ids": []}
+        elif not isinstance(item, dict):
+            continue
+
+        raw_type = item.get("claim_type") or item.get("type")
+        claim_type = _coerce_enum(raw_type, ClaimType) or ClaimType.DECISION
+        statement = str(item.get("statement") or item.get("claim") or item.get("description") or "").strip()
+        if not statement:
             continue
 
         claim_status = (

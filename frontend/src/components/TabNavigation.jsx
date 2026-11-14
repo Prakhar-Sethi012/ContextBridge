@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Activity, ShieldCheck, Lock } from 'lucide-react';
+import { FileText, Activity, ShieldCheck, Lock, FlaskConical } from 'lucide-react';
 
 export default function TabNavigation({
   activeTab,
@@ -14,11 +14,11 @@ export default function TabNavigation({
     <div className="w-full bg-beige border-b border-beige-border">
       <div className="w-full px-6 sm:px-8 flex flex-col sm:flex-row sm:items-center justify-between">
         {/* Flat Bottom-Border Tabs */}
-        <nav className="flex space-x-8" aria-label="Tabs">
+        <nav className="flex space-x-6 sm:space-x-8 overflow-x-auto" aria-label="Tabs">
           <button
             type="button"
             onClick={() => onTabChange('blueprint')}
-            className={`py-4 px-1 inline-flex items-center gap-2 font-mono text-sm uppercase tracking-wider transition-fast border-b-4 -mb-[1px] cursor-pointer ${
+            className={`py-4 px-1 inline-flex items-center gap-2 font-mono text-sm uppercase tracking-wider transition-fast border-b-4 -mb-[1px] cursor-pointer whitespace-nowrap ${
               activeTab === 'blueprint'
                 ? 'border-vibrant text-forest font-bold'
                 : 'border-transparent text-gray-500 hover:text-forest hover:border-gray-300 font-medium'
@@ -42,7 +42,7 @@ export default function TabNavigation({
           <button
             type="button"
             onClick={() => onTabChange('busfactor')}
-            className={`py-4 px-1 inline-flex items-center gap-2 font-mono text-sm uppercase tracking-wider transition-fast border-b-4 -mb-[1px] cursor-pointer ${
+            className={`py-4 px-1 inline-flex items-center gap-2 font-mono text-sm uppercase tracking-wider transition-fast border-b-4 -mb-[1px] cursor-pointer whitespace-nowrap ${
               activeTab === 'busfactor'
                 ? 'border-vibrant text-forest font-bold'
                 : 'border-transparent text-gray-500 hover:text-forest hover:border-gray-300 font-medium'
@@ -61,6 +61,28 @@ export default function TabNavigation({
                 {domainsCount}
               </span>
             )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onTabChange('sandbox')}
+            className={`py-4 px-1 inline-flex items-center gap-2 font-mono text-sm uppercase tracking-wider transition-fast border-b-4 -mb-[1px] cursor-pointer whitespace-nowrap ${
+              activeTab === 'sandbox'
+                ? 'border-vibrant text-forest font-bold'
+                : 'border-transparent text-gray-500 hover:text-forest hover:border-gray-300 font-medium'
+            }`}
+          >
+            <FlaskConical className="w-4 h-4" />
+            <span>Interactive Sandbox</span>
+            <span
+              className={`ml-1 text-[10px] font-mono px-1.5 py-0.2 border uppercase ${
+                activeTab === 'sandbox'
+                  ? 'bg-vibrant text-forest border-forest font-bold'
+                  : 'bg-beige-dark text-forest border-beige-border font-medium'
+              }`}
+            >
+              Live
+            </span>
           </button>
         </nav>
 

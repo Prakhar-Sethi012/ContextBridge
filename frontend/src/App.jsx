@@ -5,6 +5,7 @@ import TransitionBlueprint from './components/TransitionBlueprint';
 import BusFactorMap from './components/BusFactorMap';
 import EvidenceDrawer from './components/EvidenceDrawer';
 import LoadingState from './components/LoadingState';
+import InteractiveSandbox from './components/InteractiveSandbox';
 import { getHandover, getBusFactor, seedChat, generateHandover } from './api';
 import { AlertCircle, CheckCircle2, X, RefreshCw } from 'lucide-react';
 
@@ -52,6 +53,10 @@ export default function App() {
     let isCancelled = false;
 
     const loadData = async () => {
+      if (activeTab === 'sandbox') {
+        return;
+      }
+
       setIsLoading(true);
       setLoadingMessage(
         activeTab === 'blueprint'
@@ -63,7 +68,7 @@ export default function App() {
         await fetchHandoverData(projectId, currentRole);
         // Also fetch bus factor in background for count badges
         fetchBusFactorData(projectId).catch(() => {});
-      } else {
+      } else if (activeTab === 'busfactor') {
         await fetchBusFactorData(projectId);
       }
 
@@ -188,8 +193,8 @@ export default function App() {
           </div>
         )}
 
-        {/* Dynamic View: Blueprint vs Bus Factor vs Loading */}
-        {isLoading ? (
+        {/* Dynamic View: Blueprint vs Bus Factor vs Sandbox vs Loading */}
+        {isLoading && activeTab !== 'sandbox' ? (
           <LoadingState message={loadingMessage} />
         ) : activeTab === 'blueprint' ? (
           <TransitionBlueprint
@@ -201,12 +206,20 @@ export default function App() {
             isGenerating={isGenerating}
             isSeeding={isSeeding}
           />
-        ) : (
+        ) : activeTab === 'busfactor' ? (
           <BusFactorMap
             data={busFactorData}
             projectId={projectId}
             onRefresh={() => fetchBusFactorData(projectId)}
             isRefreshing={isLoading}
+          />
+        ) : (
+          <InteractiveSandbox
+            currentRole={currentRole}
+            projectId={projectId}
+            onApplyToBlueprint={(newClaims) => {
+              setClaims((prev) => [...newClaims, ...prev]);
+            }}
           />
         )}
       </main>
