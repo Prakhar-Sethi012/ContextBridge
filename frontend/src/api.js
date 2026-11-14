@@ -4,7 +4,7 @@ import axios from 'axios';
  * Base Axios instance pointing to the FastAPI backend.
  */
 export const apiClient = axios.create({
-  baseURL: 'http://localhost:8000/api',
+  baseURL: 'https://contextbridge-fq3c.onrender.com/api',
   headers: {
     'Content-Type': 'application/json',
   },
