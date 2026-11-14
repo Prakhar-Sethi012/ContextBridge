@@ -1,3 +1,5 @@
+@import 'sf-font/stylesheet.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -11,13 +13,21 @@
 
   html {
     color-scheme: light;
+    font-family: "SF Pro Display", "SF Pro Text", "SF Pro", -apple-system, BlinkMacSystemFont, "San Francisco", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   body {
-    @apply bg-beige text-charcoal font-sans antialiased;
+    @apply bg-beige text-charcoal;
+    font-family: "SF Pro Display", "SF Pro Text", "SF Pro", -apple-system, BlinkMacSystemFont, "San Francisco", "Helvetica Neue", Helvetica, Arial, sans-serif;
     min-height: 100vh;
     margin: 0;
     padding: 0;
+  }
+
+  button, input, select, textarea {
+    font-family: inherit;
   }
 }
 
